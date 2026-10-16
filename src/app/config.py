@@ -250,7 +250,14 @@ def save_preset(preset: ToolPreset) -> Path:
 
 
 def reset_all_configuration() -> None:
-    """Purge all user-saved presets and restore factory defaults."""
+    """Purge all user-saved presets and restore factory defaults.
+
+    Recursively removes all saved preset files and subdirectories from the application's
+    isolated XDG configuration directory, then regenerates and persists a clean default
+    factory preset.
+    """
+    # SECURITY: Ensure reliable local state erasure restricted strictly to the app's
+    # XDG configuration tree without touching other user files or directories.
     config_dir = get_config_dir()
     if config_dir.exists():
         for root, dirs, files in os.walk(config_dir, topdown=False):

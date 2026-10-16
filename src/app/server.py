@@ -8,6 +8,7 @@ tuner web interface, handling session-authenticated preset persistence, and enfo
 defense-in-depth HTTP security headers (CWE-208, CWE-352, CWE-693).
 """
 
+import os
 import secrets
 import sys
 from pathlib import Path
@@ -18,6 +19,48 @@ from fastapi.responses import HTMLResponse
 
 from app.config import TunerPreset, load_preset, save_preset
 from app.dsp import TUNING_PRESETS
+
+
+def format_clickable_url(url: str, is_tty: Optional[bool] = None) -> str:
+    r"""Format a URL as an OSC 8 clickable terminal hyperlink with clean fallback.
+
+    Produces an OSC 8 escape sequence formatted as \\033]8;;<URL>\\033\\\\<URL>\\033]8;;\\033\\\\
+    when connected to an interactive TTY and NO_COLOR is absent in the environment.
+    Falls back to a plain-text URL when redirected or when NO_COLOR is set.
+
+    Args:
+        url: The URL string to format.
+        is_tty: Optional explicit boolean indicating TTY capability. Defaults to
+            sys.stderr.isatty().
+
+    Returns:
+        Clickable OSC 8 hyperlink sequence or clean plain-text URL.
+    """
+    tty_active = sys.stderr.isatty() if is_tty is None else is_tty
+    no_color = "NO_COLOR" in os.environ
+    if tty_active and not no_color:
+        return f"\033]8;;{url}\033\\{url}\033]8;;\033\\"
+    return url
+
+
+def is_headless_environment() -> bool:
+    """Detect whether execution is running within a headless or automated environment.
+
+    Inspects standard continuous integration flags (e.g. CI=true or CI=1) and verifies
+    the presence of active graphical display server sockets (DISPLAY, WAYLAND_DISPLAY)
+    on Linux platforms.
+
+    Returns:
+        True if running in a headless or automated environment; False otherwise.
+    """
+    ci_val = os.environ.get("CI", "").strip().lower()
+    if ci_val in ("true", "1"):
+        return True
+    if sys.platform.startswith("linux"):
+        has_display = bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+        if not has_display:
+            return True
+    return False
 
 
 def create_app(auth_token: Optional[str] = None) -> FastAPI:
@@ -194,7 +237,6 @@ def run_local_server(port: int = 8080, host: str = "127.0.0.1", open_browser: bo
         open_browser: Flag to automatically launch default browser on startup.
     """
     import base64
-    import os
     import threading
     import webbrowser
 
@@ -205,8 +247,8 @@ def run_local_server(port: int = 8080, host: str = "127.0.0.1", open_browser: bo
     app = create_app(auth_token=token)
     url = f"http://{host}:{port}/?token={token}"
 
-    # Auto-open browser via non-blocking background timer
-    if open_browser:
+    # Auto-open browser via non-blocking background timer unless suppressed or headless
+    if open_browser and not is_headless_environment():
         def _open() -> None:
             try:
                 # Suppress noisy browser engine console messages (e.g. Chromium zygote pipe notices)
@@ -230,15 +272,13 @@ def run_local_server(port: int = 8080, host: str = "127.0.0.1", open_browser: bo
         timer.daemon = True
         timer.start()
 
-    # Emit clickable OSC 8 hyperlink and OSC 52 clipboard sequence on interactive terminals
-    is_tty = sys.stderr.isatty()
-    if is_tty:
-        clickable_link = f"\033]8;;{url}\033\\{url}\033]8;;\033\\"
+    clickable_link = format_clickable_url(url)
+
+    # Emit OSC 52 clipboard copy sequence only on interactive TTYs when NO_COLOR is absent
+    if sys.stderr.isatty() and "NO_COLOR" not in os.environ:
         b64_url = base64.b64encode(url.encode("utf-8")).decode("ascii")
         osc52_clip = f"\033]52;c;{b64_url}\a"
         sys.stderr.write(osc52_clip)
-    else:
-        clickable_link = url
 
     sys.stderr.write(f"\n[acu-gtune] Local server running at: {clickable_link}\n")
     # SECURITY: Inform user of loopback binding isolation.

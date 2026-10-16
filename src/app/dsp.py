@@ -144,6 +144,7 @@ def calculate_cents(detected_freq: float, target_freq: float) -> float:
     Returns:
         Pitch deviation in cents, where 100 cents equals one equal-temperament semitone.
     """
+    # SECURITY: Guard against math domain errors (log2 of zero or negative frequency).
     if detected_freq <= 0 or target_freq <= 0:
         return 0.0
     return 1200.0 * math.log2(detected_freq / target_freq)
@@ -257,6 +258,7 @@ def estimate_signal_rms(signal: np.ndarray) -> float:
     Returns:
         Root-mean-square amplitude value.
     """
+    # SECURITY: Defend against division by zero and NaN propagation on empty audio buffers.
     if len(signal) == 0:
         return 0.0
     return float(np.sqrt(np.mean(signal.astype(np.float64) ** 2)))
@@ -288,6 +290,8 @@ def estimate_pitch_yin(
     Returns:
         Estimated fundamental frequency in Hertz, or 0.0 if unvoiced.
     """
+    # SECURITY: Guard against empty buffers and constrain lag tau within valid array bounds
+    # to prevent index errors and out-of-bounds reads.
     if len(signal) == 0:
         return 0.0
 
@@ -446,6 +450,8 @@ def analyze_audio_frame(
         Populated TuningResult object, or None if signal is below noise gate or unvoiced.
     """
     rms = estimate_signal_rms(signal)
+    # SECURITY: Filter low-amplitude noise below threshold to prevent CPU spikes and
+    # false-positive pitch calculations on background acoustic noise.
     if rms < noise_gate:
         return None
 

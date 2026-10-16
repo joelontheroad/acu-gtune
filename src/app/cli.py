@@ -39,6 +39,8 @@ def setup_signal_handlers() -> None:
     code 130 without emitting uncaught Python tracebacks to stderr.
     """
     def _sig_handler(signum, frame):
+        # SECURITY: Flush active buffers and exit with 130 to prevent state corruption
+        # or orphaned filesystem handles on abrupt process termination.
         sys.stderr.write("\n[acu-gtune] Process interrupted by user. Exiting.\n")
         sys.stderr.flush()
         sys.exit(130)
@@ -57,6 +59,8 @@ def should_colorize() -> bool:
     Returns:
         True if colors should be emitted; False otherwise.
     """
+    # SECURITY: Respect NO_COLOR standard to prevent ANSI escape sequence injection
+    # into automated logs, CI environments, or redirected pipes.
     if "NO_COLOR" in os.environ:
         return False
     return sys.stdout.isatty()
@@ -76,6 +80,8 @@ def _read_wav_buffer(raw_bytes: bytes) -> tuple[np.ndarray, int]:
             - audio: 1D NumPy array of normalized float64 audio samples.
             - framerate: Sampling rate in Hertz.
     """
+    # SECURITY: Normalize raw PCM samples to [-1.0, 1.0] float64 range to defend against
+    # arithmetic integer overflow and numerical instabilities in downstream DSP calculations.
     with wave.open(io.BytesIO(raw_bytes), "rb") as wf:
         n_channels = wf.getnchannels()
         sampwidth = wf.getsampwidth()
@@ -167,6 +173,18 @@ def build_parser() -> argparse.ArgumentParser:
         default=True,
         help="Automatically open the web interface in the default browser (default: true).",
     )
+    serve_parser.add_argument(
+        "--no-browser",
+        dest="open",
+        action="store_false",
+        help="Suppress automatic browser window launch on startup.",
+    )
+    serve_parser.add_argument(
+        "--browser",
+        dest="open",
+        action="store_true",
+        help="Automatically open the web interface in the default browser.",
+    )
 
     # 'preset' subcommand
     preset_parser = subparsers.add_parser("preset", help="Inspect and manage local YAML presets.")
@@ -255,6 +273,8 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     # Lazy import of web server framework to maintain sub-200ms CLI startup latency
     if args.subcommand == "serve":
+        # SECURITY: Lazily import heavy server framework to avoid unnecessary network stack binding
+        # and keep non-server CLI commands fast and decoupled from the web layer.
         from app.server import run_local_server
         run_local_server(port=args.port, host=args.host, open_browser=args.open)
         return 0
@@ -280,6 +300,8 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     if args.subcommand == "tune":
         # Support reading audio streams via standard input pipe (-) or local file
+        # SECURITY: Stream audio directly from stdin (-) into memory buffers without creating
+        # temporary files on disk, avoiding local data residency leaks (CWE-312).
         if args.input == "-":
             raw_data = sys.stdin.buffer.read()
         else:

@@ -44,6 +44,7 @@ acu-gtune serve
 | Command / Flag | Description |
 |---|---|
 | `acu-gtune serve` | Launch the authenticated Peterson strobe web interface on `127.0.0.1:8080` |
+| `acu-gtune serve --no-browser` | Launch server without automatically opening the default browser |
 | `acu-gtune tune [file]` | Analyze pitch and cents offset from a WAV file or stdin (`-`) |
 | `acu-gtune preset list` | List all locally available YAML presets |
 | `acu-gtune preset show` | Display active preset configuration in YAML or JSON |
