@@ -824,10 +824,22 @@ SPDX-License-Identifier: AGPL-3.0-or-later
     // Display Quantization & Temporal Smoothing State
     let smoothedCents = null;
 
+    /**
+     * Retrieve the active cents quantization step size from the UI.
+     *
+     * @returns {number} Quantization step in cents (e.g. 0.2 or 0.5).
+     */
     function getResolutionStep() {
       return resolutionSelect ? (parseFloat(resolutionSelect.value) || 0.2) : 0.2;
     }
 
+    /**
+     * Format a numerical cents deviation value with sign and units.
+     *
+     * @param {number|null} cents - Pitch deviation in cents.
+     * @param {number|null} [step] - Optional quantization resolution step.
+     * @returns {string} Formatted cents string with sign and unit (e.g. "+0.2 ¢").
+     */
     function formatCents(cents, step = null) {
       if (cents === null || cents === undefined || isNaN(cents)) return '-- ¢';
       const s = step || getResolutionStep();
@@ -842,6 +854,11 @@ SPDX-License-Identifier: AGPL-3.0-or-later
     let harmonicCapture = null;
     let frettedCapture = null;
 
+    /**
+     * Activate either the harmonic or fretted intonation measurement slot.
+     *
+     * @param {'harmonic'|'fretted'} slot - Target measurement slot.
+     */
     function selectIntonationSlot(slot) {
       intonationSlot = slot;
       activeTrackFreq = null; // Clear pitch continuity lock so next note latches immediately
@@ -855,6 +872,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
       }
     }
 
+    /**
+     * Recompute the intonation offset and update saddle adjustment advice.
+     */
     function updateIntonationDeltaUI() {
       const tol = parseFloat(toleranceInput.value) || 0.2;
       const step = getResolutionStep();
@@ -892,6 +912,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
       }
     }
 
+    /**
+     * Clear both harmonic and fretted intonation readings and reset UI state.
+     */
     function resetIntonationPair() {
       harmonicCapture = null;
       frettedCapture = null;
@@ -909,6 +932,14 @@ SPDX-License-Identifier: AGPL-3.0-or-later
       updateIntonationDeltaUI();
     }
 
+    /**
+     * Latch a measured pitch reading into the active intonation slot.
+     *
+     * @param {Object} match - Matched note candidate metadata.
+     * @param {number} cents - Calculated pitch deviation in cents.
+     * @param {number} freq - Detected frequency in Hertz.
+     * @param {boolean} isInTune - Flag indicating whether reading is within tolerance.
+     */
     function recordIntonationReading(match, cents, freq, isInTune) {
       if (!isIntonationMode) return;
       const step = getResolutionStep();
@@ -964,6 +995,12 @@ SPDX-License-Identifier: AGPL-3.0-or-later
     const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
     let selectedNoteFilter = 'auto';
 
+    /**
+     * Convert note name with octave into standard MIDI note number.
+     *
+     * @param {string} note - Note identifier (e.g. "E2", "A4").
+     * @returns {number} Corresponding MIDI note number.
+     */
     function noteToMidi(note) {
       const match = note.match(/^([A-G]#?)(-?\d+)$/);
       if (!match) return 69;
@@ -972,15 +1009,37 @@ SPDX-License-Identifier: AGPL-3.0-or-later
       return (oct + 1) * 12 + NOTE_NAMES.indexOf(pitch);
     }
 
+    /**
+     * Convert a MIDI note number to equal-temperament frequency in Hertz.
+     *
+     * @param {number} midi - MIDI note number.
+     * @param {number} [a4=440.0] - Reference A4 calibration in Hertz.
+     * @returns {number} Frequency in Hertz.
+     */
     function midiToHz(midi, a4 = 440.0) {
       return a4 * Math.pow(2, (midi - 69) / 12);
     }
 
+    /**
+     * Convert a note name string to target frequency in Hertz.
+     *
+     * @param {string} note - Musical note name with octave.
+     * @param {number} [a4=440.0] - Reference A4 calibration in Hertz.
+     * @returns {number} Target frequency in Hertz.
+     */
     function noteToHz(note, a4 = 440.0) {
       return midiToHz(noteToMidi(note), a4);
     }
 
-    // High-Precision Note Matcher with Multi-Octave Harmonic Support for Intonation
+    /**
+     * Locate the closest musical note or harmonic multiple for a given frequency.
+     *
+     * @param {number} freq - Measured frequency in Hertz.
+     * @param {number} [a4=440.0] - Reference A4 frequency calibration.
+     * @param {string[]|null} [allowed=null] - Allowed candidate note strings.
+     * @param {boolean} [allowOctaves=true] - Whether to search 12th-fret and upper harmonics.
+     * @returns {Object} Target note metadata, frequency, and cents offset.
+     */
     function hzToNearest(freq, a4 = 440.0, allowed = null, allowOctaves = true) {
       if (freq <= 0) return { note: '--', target: 0, cents: 0, harmonicTier: 1, tierName: 'OPEN' };
       if (allowed && allowed.length > 0) {
@@ -1044,6 +1103,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
     const NUM_RINGS = 5;
     const RING_SEGMENTS = [8, 16, 32, 64, 128]; // Double each octave outward
 
+    /**
+     * Render multi-band concentric stroboscopic disc pattern onto the HTML5 canvas.
+     */
     function drawStrobeDisc() {
       const w = canvas.width;
       const h = canvas.height;
@@ -1108,6 +1170,11 @@ SPDX-License-Identifier: AGPL-3.0-or-later
     let previousRms = 0.0;
     let activeTrackFreq = null;
 
+    /**
+     * Dynamically tune the biquad high-pass filter cutoff to reject sub-audio rumble.
+     *
+     * @param {number|null} [targetFreq=null] - Fundamental frequency of active note.
+     */
     function updateFilterCutoff(targetFreq = null) {
       if (!filterNode || !audioCtx) return;
       let cutoff = 72; // default guitar low cut
@@ -1124,7 +1191,18 @@ SPDX-License-Identifier: AGPL-3.0-or-later
       filterNode.frequency.setTargetAtTime(cutoff, audioCtx.currentTime, 0.05);
     }
 
-    // High-Precision YIN algorithm with pitch continuity tracking and decay protection
+    /**
+     * Perform fundamental pitch estimation using the YIN algorithm with parabolic interpolation.
+     *
+     * @param {Float32Array} buffer - Normalized audio sample array.
+     * @param {number} sampleRate - AudioContext sampling rate in Hertz.
+     * @param {number} [minFreq=25.0] - Lower frequency bound.
+     * @param {number} [maxFreq=3200.0] - Upper frequency bound.
+     * @param {number} [threshold=0.15] - YIN dip detection threshold.
+     * @param {number|null} [expectedFreq=null] - Expected frequency for continuity tracking.
+     * @param {boolean} [allowGlobalFallback=true] - Whether to search full range if continuity fails.
+     * @returns {number} Detected fundamental frequency in Hertz, or 0 if unvoiced.
+     */
     function yinPitch(buffer, sampleRate, minFreq = 25.0, maxFreq = 3200.0, threshold = 0.15, expectedFreq = null, allowGlobalFallback = true) {
       const maxTau = Math.floor(sampleRate / minFreq);
       const minTau = Math.floor(sampleRate / maxFreq);
@@ -1202,6 +1280,11 @@ SPDX-License-Identifier: AGPL-3.0-or-later
       return tauExact > 0 ? sampleRate / tauExact : 0;
     }
 
+    /**
+     * Drive the 60fps requestAnimationFrame stroboscopic rendering loop.
+     *
+     * @param {number} now - High-resolution timestamp from performance.now().
+     */
     function animate(now) {
       const dt = (now - lastTime) / 1000.0;
       lastTime = now;
@@ -1223,7 +1306,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
     }
     requestAnimationFrame(animate);
 
-    // Audio Ingestion Loop with Adaptive High-Pass Filter
+    /**
+     * Initialize AudioContext and request microphone media stream access.
+     */
     async function startAudio() {
       try {
         const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -1267,6 +1352,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
       }
     }
 
+    /**
+     * Release microphone stream and tear down Web Audio graph.
+     */
     function stopAudio() {
       if (micStream) {
         micStream.getTracks().forEach(t => t.stop());
@@ -1307,6 +1395,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
     const TRACK_THRESHOLD = 0.005; // Sensitive threshold captures soft harmonics and thumb plucks
     const ATTACK_THRESHOLD = 0.003; // Responsive attack transient threshold
 
+    /**
+     * Reset tuner state, readings, and UI meters back to the idle standby state.
+     */
     function resetToIdle() {
       tunerState = 'IDLE';
       lastStableReading = null;
@@ -1329,6 +1420,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
       updateFilterCutoff();
     }
 
+    /**
+     * Continually ingest audio buffers, compute RMS, and drive pitch detection.
+     */
     function processAudioLoop() {
       if (!isListening || !analyser) return;
 
@@ -1504,7 +1598,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
       setTimeout(processAudioLoop, 40);
     }
 
-    // UI Updates on dropdown change
+    /**
+     * Rebuild instrument string selector buttons based on active instrument and tuning.
+     */
     function updateStringButtons() {
       const inst = instrumentSelect.value;
       const tun = tuningSelect.value;
@@ -1569,7 +1665,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
       });
     });
 
-    // Preset loading and saving
+    /**
+     * Fetch active preset configuration from local REST API and update UI inputs.
+     */
     async function loadPreset() {
       try {
         const res = await fetch('/api/preset', {

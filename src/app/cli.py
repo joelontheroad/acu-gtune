@@ -1,7 +1,12 @@
 # SPDX-FileCopyrightText: 2026 Joel Greenberg
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""Command-line interface implementation adhering to POSIX standards and stream discipline."""
+"""Command-line interface implementation adhering to POSIX standards and stream discipline.
+
+Provides the CLI entry point for acu-gtune, supporting live pitch analysis from WAV
+files or piped stdin audio streams, local preset configuration, and launching the
+localhost web interface with strict stream separation (data to stdout, logs to stderr).
+"""
 
 import argparse
 import io
@@ -28,7 +33,11 @@ from app.dsp import (
 
 
 def setup_signal_handlers() -> None:
-    """Gracefully handle SIGINT and SIGTERM without dumping tracebacks."""
+    """Register graceful POSIX signal handlers for SIGINT and SIGTERM.
+
+    Traps interruption signals to flush buffers and terminate cleanly with exit
+    code 130 without emitting uncaught Python tracebacks to stderr.
+    """
     def _sig_handler(signum, frame):
         sys.stderr.write("\n[acu-gtune] Process interrupted by user. Exiting.\n")
         sys.stderr.flush()
@@ -40,14 +49,33 @@ def setup_signal_handlers() -> None:
 
 
 def should_colorize() -> bool:
-    """Determine whether terminal ANSI colors should be emitted."""
+    """Determine whether ANSI terminal color sequences should be emitted.
+
+    Checks the NO_COLOR environment variable specification and verifies whether
+    standard output is an interactive terminal stream (TTY).
+
+    Returns:
+        True if colors should be emitted; False otherwise.
+    """
     if "NO_COLOR" in os.environ:
         return False
     return sys.stdout.isatty()
 
 
 def _read_wav_buffer(raw_bytes: bytes) -> tuple[np.ndarray, int]:
-    """Extract float audio array and sample rate from WAV byte buffer."""
+    """Extract normalized float audio sample array and sample rate from a WAV buffer.
+
+    Converts integer PCM sample encodings (8-bit, 16-bit, 32-bit) to 64-bit float
+    samples normalized to [-1.0, 1.0], averaging multi-channel audio down to mono.
+
+    Args:
+        raw_bytes: In-memory byte buffer of a valid WAV audio file.
+
+    Returns:
+        Tuple containing:
+            - audio: 1D NumPy array of normalized float64 audio samples.
+            - framerate: Sampling rate in Hertz.
+    """
     with wave.open(io.BytesIO(raw_bytes), "rb") as wf:
         n_channels = wf.getnchannels()
         sampwidth = wf.getsampwidth()
@@ -71,14 +99,22 @@ def _read_wav_buffer(raw_bytes: bytes) -> tuple[np.ndarray, int]:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Build and configure the top-level command-line parser."""
+    """Construct and configure the command-line argument parser.
+
+    Configures global flags (-v/--version, -q/--quiet, --verbose, --json, --reset-config)
+    and subcommands ('serve', 'preset', 'tune', 'run') with stream separation and
+    standard POSIX formatting.
+
+    Returns:
+        Configured ArgumentParser instance.
+    """
     parser = argparse.ArgumentParser(
         prog="acu-gtune",
         description="acu-gtune: High-precision stroboscopic guitar and bass tuner.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
-    # Standard global flags
+    # Standard global flags adhering to POSIX and project guidelines
     parser.add_argument(
         "-v", "--version",
         action="version",
@@ -186,12 +222,27 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Optional[List[str]] = None) -> int:
-    """CLI entry point function."""
+    """Execute the top-level command-line interface entry point.
+
+    Parses command-line arguments, sets up signal handlers, routes execution to the
+    appropriate subcommand handler, and enforces stream discipline (machine JSON to
+    stdout, diagnostic messages to stderr).
+
+    Args:
+        argv: Optional list of command-line argument strings. Defaults to sys.argv[1:].
+
+    Returns:
+        Process exit code:
+            - 0: Successful execution.
+            - 1: Operational failure (e.g. invalid input data, audio read error).
+            - 2: CLI syntax or argument parsing error.
+            - 130: Interrupted by user (SIGINT/SIGTERM).
+    """
     setup_signal_handlers()
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    # Handle global reset
+    # Purge presets and restore built-in factory defaults when requested
     if args.reset_config:
         reset_all_configuration()
         if not args.quiet:
@@ -202,13 +253,12 @@ def main(argv: Optional[List[str]] = None) -> int:
         parser.print_help(sys.stderr)
         return 2
 
-    # Handler: serve (Lazy import to maintain sub-200ms startup for CLI commands)
+    # Lazy import of web server framework to maintain sub-200ms CLI startup latency
     if args.subcommand == "serve":
         from app.server import run_local_server
         run_local_server(port=args.port, host=args.host, open_browser=args.open)
         return 0
 
-    # Handler: preset
     if args.subcommand == "preset":
         if args.preset_action == "list":
             presets_dir = get_presets_dir()
@@ -228,8 +278,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                 sys.stdout.write(yaml.dump(preset.model_dump(), sort_keys=False) + "\n")
             return 0
 
-    # Handler: tune
     if args.subcommand == "tune":
+        # Support reading audio streams via standard input pipe (-) or local file
         if args.input == "-":
             raw_data = sys.stdin.buffer.read()
         else:
@@ -244,7 +294,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         try:
             audio, sr = _read_wav_buffer(raw_data)
         except Exception:
-            # Fallback if raw 16-bit PCM buffer was piped
+            # Fallback for headerless 16-bit raw PCM byte streams
             audio = np.frombuffer(raw_data, dtype=np.int16).astype(np.float64) / 32768.0
             sr = 44100
 
@@ -281,7 +331,6 @@ def main(argv: Optional[List[str]] = None) -> int:
             )
         return 0
 
-    # Handler: run
     if args.subcommand == "run":
         if args.input == "-":
             raw_input = sys.stdin.buffer.read()
@@ -290,7 +339,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 raw_input = f.read()
 
         preset = load_preset("default")
-        # Check if input is a WAV file
+        # Detect RIFF/WAVE container header before parsing binary data
         if raw_input.startswith(b"RIFF") and b"WAVE" in raw_input[:16]:
             try:
                 audio, sr = _read_wav_buffer(raw_input)
@@ -319,7 +368,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 if args.verbose:
                     sys.stderr.write(f"[acu-gtune] Audio decode error: {exc}\n")
 
-        # Fallback processing for generic data
+        # Fallback response for generic binary stream inputs
         result = {
             "status": "success",
             "bytes_processed": len(raw_input),

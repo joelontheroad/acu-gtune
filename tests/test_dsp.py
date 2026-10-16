@@ -106,10 +106,7 @@ def test_frequency_to_nearest_note():
 )
 @pytest.mark.parametrize("cent_offset", [+0.10, -0.10, +0.05, -0.05])
 def test_precision_yin_tenth_cent(note_name: str, target_freq: float, cent_offset: float):
-    """
-    Rigorously verify that YIN pitch detection resolves pitch offsets down to +/-0.1 cent
-    and +/-0.05 cent across all guitar and bass frequencies.
-    """
+    """Verify YIN pitch detection resolves offsets down to +/-0.05 cent."""
     f_input = target_freq * (2.0 ** (cent_offset / 1200.0))
     sr = 44100
     signal = _generate_harmonic_signal(freq=f_input, duration=0.4, sr=sr)

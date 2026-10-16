@@ -1,7 +1,12 @@
 # SPDX-FileCopyrightText: 2026 Joel Greenberg
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""High-precision pitch detection and intonation analysis engine for guitar and bass."""
+"""High-precision pitch detection and intonation analysis engine for guitar and bass.
+
+Implements time-domain fundamental frequency estimation via the YIN algorithm
+with parabolic sub-sample refinement, spectral FFT interpolation, logarithmic
+cents deviation calculation, and bridge saddle intonation compensation analysis.
+"""
 
 import math
 from typing import Dict, List, Optional, Tuple
@@ -40,7 +45,18 @@ TUNING_PRESETS: Dict[str, Dict[str, List[str]]] = {
 
 
 class TuningResult(BaseModel):
-    """Result of high-precision intonation and pitch analysis."""
+    """Result of high-precision intonation and pitch analysis.
+
+    Attributes:
+        detected_freq: Estimated fundamental frequency in Hertz.
+        target_note: Target musical note name with octave (e.g. 'E2', 'A4').
+        target_freq: Target note reference frequency in Hertz.
+        cents: Pitch deviation from target note in cents.
+        in_tune: Boolean flag indicating if deviation is within tolerance.
+        slip_cps: Stroboscopic slip rate in cycles per second (detected - target).
+        rms: Root-mean-square amplitude of analyzed audio buffer.
+    """
+
     detected_freq: float = Field(..., description="Estimated fundamental frequency in Hertz")
     target_note: str = Field(..., description="Target musical note name with octave (e.g. E2)")
     target_freq: float = Field(..., description="Target note reference frequency in Hertz")
@@ -51,7 +67,17 @@ class TuningResult(BaseModel):
 
 
 def note_name_to_midi(note_str: str) -> int:
-    """Convert note name (e.g. 'E2', 'C#3', 'A4') to MIDI note number."""
+    """Convert a musical note string to its standard MIDI note number.
+
+    Args:
+        note_str: Note name with octave (e.g. 'E2', 'C#3', 'A4').
+
+    Returns:
+        MIDI note number where A4 (440 Hz) is 69 and C-1 is 0.
+
+    Raises:
+        ValueError: If the note string format is invalid or pitch name is unknown.
+    """
     clean = note_str.strip().upper()
     if clean[-1].isdigit():
         octave = int(clean[-1])
@@ -68,35 +94,73 @@ def note_name_to_midi(note_str: str) -> int:
 
 
 def midi_to_note_name(midi_number: int) -> str:
-    """Convert MIDI note number to note name with octave (e.g. 69 -> 'A4')."""
+    """Convert a MIDI note number to musical note name with octave.
+
+    Args:
+        midi_number: MIDI note number (0 to 127).
+
+    Returns:
+        Formatted musical note name (e.g. 'A4', 'C4', 'E2').
+    """
     octave = (midi_number // 12) - 1
     pitch = NOTE_NAMES[midi_number % 12]
     return f"{pitch}{octave}"
 
 
 def midi_to_frequency(midi_number: int, a4_ref: float = 440.0) -> float:
-    """Convert MIDI note number to exact equal-temperament frequency in Hertz."""
+    """Convert a MIDI note number to equal-temperament frequency in Hertz.
+
+    Args:
+        midi_number: MIDI note number.
+        a4_ref: Reference concert pitch calibration in Hertz.
+
+    Returns:
+        Calculated frequency in Hertz.
+    """
     return a4_ref * (2.0 ** ((midi_number - 69) / 12.0))
 
 
 def note_name_to_frequency(note_str: str, a4_ref: float = 440.0) -> float:
-    """Convert note name string to target frequency in Hertz."""
+    """Convert a musical note name string to target frequency in Hertz.
+
+    Args:
+        note_str: Musical note name with octave.
+        a4_ref: Reference concert pitch calibration in Hertz.
+
+    Returns:
+        Target frequency in Hertz.
+    """
     midi_num = note_name_to_midi(note_str)
     return midi_to_frequency(midi_num, a4_ref=a4_ref)
 
 
 def calculate_cents(detected_freq: float, target_freq: float) -> float:
-    """Compute pitch deviation in cents: 1200 * log2(detected / target)."""
+    """Compute pitch deviation in cents: 1200 * log2(detected / target).
+
+    Args:
+        detected_freq: Measured frequency in Hertz.
+        target_freq: Target reference frequency in Hertz.
+
+    Returns:
+        Pitch deviation in cents, where 100 cents equals one equal-temperament semitone.
+    """
     if detected_freq <= 0 or target_freq <= 0:
         return 0.0
     return 1200.0 * math.log2(detected_freq / target_freq)
 
 
 def quantize_cents(cents: float, step: float = 0.2) -> float:
-    """
-    Quantize cents deviation to a discrete step size (e.g. 0.2 cents).
-    This stabilizes display readouts against microscopic physical finger pressure
+    """Quantize cents deviation to a discrete step size for visual stability.
+
+    Stabilizes display readouts against microscopic physical finger pressure
     and wood deflection variations.
+
+    Args:
+        cents: Raw calculated pitch deviation in cents.
+        step: Display quantization step size (e.g. 0.2 cents).
+
+    Returns:
+        Quantized cents value rounded to nearest step multiple.
     """
     if step <= 0.0:
         return cents
@@ -106,13 +170,21 @@ def quantize_cents(cents: float, step: float = 0.2) -> float:
 def calculate_intonation_delta(
     harmonic_cents: float, fretted_cents: float, tolerance: float = 0.1
 ) -> Tuple[float, str]:
-    """
-    Calculate the intonation delta between 12th-fret harmonic and 12th-fret fretted note.
-    Delta = fretted_cents - harmonic_cents.
-    Returns: (delta_cents, saddle_recommendation)
-      - delta > +tolerance: "MOVE_BACK" (fretted note is sharp, string too short -> lengthen)
-      - delta < -tolerance: "MOVE_FORWARD" (fretted note is flat, string too long -> shorten)
-      - abs(delta) <= tolerance: "PERFECT" (intonation matched within tolerance)
+    """Calculate intonation delta between 12th-fret harmonic and fretted note.
+
+    Computes delta = fretted_cents - harmonic_cents and provides bridge saddle
+    compensation advice based on string acoustics.
+
+    Args:
+        harmonic_cents: Measured pitch deviation of 12th-fret harmonic in cents.
+        fretted_cents: Measured pitch deviation of 12th-fret fretted note in cents.
+        tolerance: Matching tolerance threshold in cents.
+
+    Returns:
+        Tuple of (delta_cents, saddle_recommendation):
+            - "MOVE_BACK": Fretted note sharp (string too short -> lengthen saddle).
+            - "MOVE_FORWARD": Fretted note flat (string too long -> shorten saddle).
+            - "PERFECT": Intonation matched within tolerance.
     """
     delta = round(fretted_cents - harmonic_cents, 3)
     if delta > tolerance:
@@ -128,12 +200,20 @@ def frequency_to_nearest_note(
     allowed_notes: Optional[List[str]] = None,
     allow_octaves: bool = True,
 ) -> Tuple[str, float, float]:
-    """
-    Find the closest musical note to the given frequency.
+    """Find the closest musical note to the given frequency.
+
     When allow_octaves is True and allowed_notes are specified, candidate frequencies
     include open fundamental, 12th fret octave (2x), and upper harmonics (3x, 4x),
     allowing seamless intonation checking on the selected string.
-    Returns (note_name, target_freq, cents_deviation).
+
+    Args:
+        freq: Detected frequency in Hertz.
+        a4_ref: Reference concert pitch calibration in Hertz.
+        allowed_notes: Optional list of note names to restrict matching to.
+        allow_octaves: Whether to evaluate harmonic multiples of allowed notes.
+
+    Returns:
+        Tuple of (note_name, target_freq, cents_deviation).
     """
     if freq <= 0:
         return ("--", 0.0, 0.0)
@@ -169,7 +249,14 @@ def frequency_to_nearest_note(
 
 
 def estimate_signal_rms(signal: np.ndarray) -> float:
-    """Calculate the Root Mean Square (RMS) amplitude of an audio buffer."""
+    """Calculate the Root Mean Square (RMS) amplitude of an audio buffer.
+
+    Args:
+        signal: 1D array of audio samples.
+
+    Returns:
+        Root-mean-square amplitude value.
+    """
     if len(signal) == 0:
         return 0.0
     return float(np.sqrt(np.mean(signal.astype(np.float64) ** 2)))
@@ -183,10 +270,23 @@ def estimate_pitch_yin(
     threshold: float = 0.15,
     expected_freq: Optional[float] = None,
 ) -> float:
-    """
-    High-precision fundamental frequency estimation using the YIN algorithm
-    with sub-sample parabolic interpolation on the Cumulative Mean Normalized
-    Difference Function (CMNDF), with optional pitch continuity tracking.
+    """Estimate fundamental frequency using the YIN algorithm with parabolic interpolation.
+
+    Computes the Cumulative Mean Normalized Difference Function (CMNDF) via fast correlation,
+    locates the dip below the aperiodic threshold, refines the minimum using sub-sample
+    parabolic fitting, and optionally restricts search to a continuity window to prevent
+    octave hopping on decaying notes.
+
+    Args:
+        signal: Audio sample buffer.
+        sample_rate: Sampling frequency in Hertz.
+        min_freq: Lower frequency search bound in Hertz.
+        max_freq: Upper frequency search bound in Hertz.
+        threshold: YIN dip threshold (typically 0.10 to 0.15).
+        expected_freq: Optional prior frequency in Hertz for continuity locking.
+
+    Returns:
+        Estimated fundamental frequency in Hertz, or 0.0 if unvoiced.
     """
     if len(signal) == 0:
         return 0.0
@@ -234,7 +334,6 @@ def estimate_pitch_yin(
         win_min = max(min_tau, int(exp_tau * (2.0 ** (-60.0 / 1200.0))))
         win_max = min(max_tau, int(math.ceil(exp_tau * (2.0 ** (60.0 / 1200.0)))))
         if win_min < win_max:
-            # Check for minimum within continuity band
             for tau in range(win_min, win_max):
                 if cmndf[tau] < threshold:
                     while tau + 1 < win_max and cmndf[tau + 1] < cmndf[tau]:
@@ -248,7 +347,7 @@ def estimate_pitch_yin(
     else:
         chosen_tau = None
 
-    # Global search if no continuity minimum found
+    # Global search across audible bounds if no continuity minimum was resolved
     if chosen_tau is None:
         for tau in range(search_min, search_max):
             if cmndf[tau] < threshold:
@@ -283,9 +382,18 @@ def estimate_pitch_fft(
     sample_rate: int = 44100,
     zero_pad_factor: int = 8,
 ) -> float:
-    """
-    Parabolic-interpolated Fast Fourier Transform (FFT) with Hann windowing
-    and zero-padding for spectral peak refinement.
+    """Refine spectral peak frequency using parabolic-interpolated FFT.
+
+    Applies a Hann window, zero-pads the signal to increase spectral bin density,
+    and interpolates around the maximum FFT magnitude bin.
+
+    Args:
+        signal: Audio sample buffer.
+        sample_rate: Sampling frequency in Hertz.
+        zero_pad_factor: Factor by which to zero-pad the signal for frequency resolution.
+
+    Returns:
+        Refined spectral peak frequency in Hertz.
     """
     n = len(signal)
     if n == 0:
@@ -320,15 +428,28 @@ def analyze_audio_frame(
     noise_gate: float = 0.005,
     expected_freq: Optional[float] = None,
 ) -> Optional[TuningResult]:
-    """
-    Analyze an audio buffer to detect pitch, nearest musical note, cents offset,
-    and stroboscopic slip velocity. Returns None if audio is below the noise gate.
+    """Analyze an audio buffer to detect pitch, nearest musical note, and cents offset.
+
+    Returns None if the root-mean-square amplitude is below the noise gate or no
+    valid fundamental pitch can be resolved.
+
+    Args:
+        signal: Audio sample buffer normalized to [-1.0, 1.0].
+        sample_rate: Sampling frequency in Hertz.
+        allowed_notes: Filter set of allowed musical note strings (e.g. ['E2', 'A2']).
+        a4_ref: Reference concert pitch calibration in Hertz.
+        tolerance_cents: In-tune window threshold in cents.
+        noise_gate: RMS amplitude threshold below which signal is treated as silence.
+        expected_freq: Optional expected frequency in Hertz for continuity tracking.
+
+    Returns:
+        Populated TuningResult object, or None if signal is below noise gate or unvoiced.
     """
     rms = estimate_signal_rms(signal)
     if rms < noise_gate:
         return None
 
-    # Estimate fundamental using YIN with continuity tracking
+    # Estimate fundamental frequency using YIN with continuity tracking
     detected_freq = estimate_pitch_yin(
         signal=signal,
         sample_rate=sample_rate,
