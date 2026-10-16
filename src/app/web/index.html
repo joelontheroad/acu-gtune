@@ -1,0 +1,1685 @@
+<!DOCTYPE html>
+<!--
+SPDX-FileCopyrightText: 2026 Joel Greenberg
+SPDX-License-Identifier: AGPL-3.0-or-later
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>acu-gtune - High-Precision Strobe Guitar Tuner</title>
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --card-bg: #141c2e;
+      --panel-bg: #1a243b;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --primary: #38bdf8;
+      --primary-hover: #0ea5e9;
+      --accent: #f59e0b;
+      --success: #10b981;
+      --error: #ef4444;
+      --border: #2d3748;
+      --focus-ring: #38bdf8;
+      --strobe-pattern: #f8fafc;
+      --strobe-bg: #050811;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      padding: 1rem;
+    }
+
+    header {
+      max-width: 1200px;
+      width: 100%;
+      margin: 0 auto 1rem auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.75rem;
+    }
+
+    .brand-title {
+      font-size: 1.5rem;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      color: var(--primary);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .badge-precision {
+      font-size: 0.75rem;
+      background: rgba(16, 185, 129, 0.2);
+      color: var(--success);
+      border: 1px solid var(--success);
+      padding: 0.15rem 0.5rem;
+      border-radius: 9999px;
+      font-weight: 600;
+    }
+
+    main {
+      max-width: 1200px;
+      width: 100%;
+      margin: 0 auto;
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 1.5rem;
+    }
+
+    @media (min-width: 900px) {
+      main {
+        grid-template-columns: 2fr 1fr;
+      }
+    }
+
+    .card {
+      background-color: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.4);
+    }
+
+    /* Strobe Section */
+    .strobe-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+
+    .canvas-wrapper {
+      position: relative;
+      width: 100%;
+      max-width: 460px;
+      aspect-ratio: 1 / 1;
+      margin: 0 auto 1.5rem auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    canvas {
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      box-shadow: 0 0 35px rgba(56, 189, 248, 0.15);
+      background-color: var(--strobe-bg);
+    }
+
+    .note-hud {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      width: 100%;
+      padding: 1rem;
+      background: var(--panel-bg);
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      text-align: center;
+    }
+
+    .note-big {
+      font-size: 3.5rem;
+      font-weight: 900;
+      color: var(--primary);
+      line-height: 1;
+      transition: color 0.15s ease;
+    }
+
+    .note-big.in-tune {
+      color: var(--success);
+      text-shadow: 0 0 20px rgba(16, 185, 129, 0.6);
+    }
+
+    .cents-readout {
+      font-size: 1.75rem;
+      font-weight: 700;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+
+    .cents-readout.in-tune {
+      color: var(--success);
+    }
+
+    .lock-badge {
+      display: inline-block;
+      margin-top: 0.25rem;
+      padding: 0.2rem 0.6rem;
+      border-radius: 4px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      background: var(--border);
+      color: var(--text-muted);
+    }
+
+    .lock-badge.active {
+      background: var(--success);
+      color: #064e3b;
+      box-shadow: 0 0 10px rgba(16, 185, 129, 0.4);
+    }
+
+    .lock-badge.decay-hold {
+      background: #0284c7;
+      color: #ffffff;
+      box-shadow: 0 0 12px rgba(2, 132, 199, 0.7);
+    }
+
+    .cents-meter-container {
+      width: 100%;
+      margin: 1rem 0;
+    }
+
+    .cents-scale-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      margin-bottom: 0.35rem;
+      padding: 0 0.25rem;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+
+    .scale-zero {
+      color: var(--success);
+      font-weight: 900;
+    }
+
+    .cents-meter {
+      width: 100%;
+      height: 42px; /* 4x thicker than 10px */
+      background: linear-gradient(180deg, #090e1a 0%, #131c2e 100%);
+      border-radius: 8px;
+      position: relative;
+      overflow: hidden;
+      border: 2px solid var(--border);
+      box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.6);
+    }
+
+    .cents-sweet-spot {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 45%;
+      width: 10%;
+      background: rgba(16, 185, 129, 0.15);
+      border-left: 1px dashed rgba(16, 185, 129, 0.4);
+      border-right: 1px dashed rgba(16, 185, 129, 0.4);
+      z-index: 1;
+    }
+
+    .cents-center-mark {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 50%;
+      width: 4px;
+      background: var(--success);
+      transform: translateX(-50%);
+      box-shadow: 0 0 10px rgba(16, 185, 129, 0.9);
+      z-index: 2;
+    }
+
+    .cents-tick {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 1px;
+      background: rgba(255, 255, 255, 0.18);
+      z-index: 1;
+    }
+    .mark-m50 { left: 2%; }
+    .mark-m25 { left: 25%; }
+    .mark-m10 { left: 40%; }
+    .mark-p10 { left: 60%; }
+    .mark-p25 { left: 75%; }
+    .mark-p50 { left: 98%; }
+
+    .cents-needle {
+      position: absolute;
+      top: 3px;
+      bottom: 3px;
+      width: 16px; /* 4x thicker than 4px */
+      background: linear-gradient(180deg, #38bdf8 0%, #0284c7 100%);
+      left: 50%;
+      transform: translateX(-50%);
+      border-radius: 6px;
+      box-shadow: 0 0 16px rgba(56, 189, 248, 0.95), 0 0 2px #ffffff;
+      transition: left 0.04s cubic-bezier(0.25, 1, 0.5, 1);
+      z-index: 3;
+      border: 1px solid rgba(255, 255, 255, 0.4);
+    }
+
+    .cents-needle.in-tune {
+      width: 20px;
+      background: linear-gradient(180deg, #34d399 0%, #059669 100%);
+      box-shadow: 0 0 22px rgba(16, 185, 129, 1), 0 0 4px #ffffff;
+      border-color: #a7f3d0;
+    }
+
+    .cents-needle.decay-hold {
+      background: linear-gradient(180deg, #38bdf8 0%, #1e40af 100%);
+      box-shadow: 0 0 18px rgba(56, 189, 248, 0.85);
+      border-color: #93c5fd;
+    }
+
+    .cents-needle.standby {
+      opacity: 0.35;
+      background: #475569;
+      box-shadow: none;
+      border-color: rgba(255, 255, 255, 0.2);
+      transition: left 0.4s ease-out, opacity 0.3s ease;
+    }
+
+    /* Intonation Mode Styles */
+    .btn-intonation {
+      width: 100%;
+      padding: 0.7rem 1rem;
+      background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-weight: 700;
+      font-size: 0.9rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      transition: all 0.2s ease;
+    }
+    .btn-intonation:hover {
+      border-color: #38bdf8;
+      box-shadow: 0 0 12px rgba(56, 189, 248, 0.3);
+    }
+    .btn-intonation.active {
+      background: linear-gradient(180deg, #0284c7 0%, #0369a1 100%);
+      color: #ffffff;
+      border-color: #38bdf8;
+      box-shadow: 0 0 16px rgba(56, 189, 248, 0.6);
+    }
+
+    .intonation-hud {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      gap: 0.75rem;
+      align-items: stretch;
+      background: rgba(15, 23, 42, 0.85);
+      border: 1px solid rgba(56, 189, 248, 0.4);
+      border-radius: 12px;
+      padding: 1rem;
+      margin: 1rem 0;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5), inset 0 0 12px rgba(56, 189, 248, 0.1);
+    }
+
+    .intonation-card {
+      background: rgba(30, 41, 59, 0.7);
+      border: 2px solid var(--border);
+      border-radius: 8px;
+      padding: 0.75rem 0.5rem;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+    .intonation-card:hover {
+      border-color: rgba(56, 189, 248, 0.5);
+    }
+    .intonation-card.selected {
+      border-color: var(--primary);
+      box-shadow: 0 0 14px rgba(56, 189, 248, 0.45);
+      background: rgba(30, 58, 100, 0.4);
+    }
+    .intonation-card.captured {
+      border-color: var(--success);
+    }
+
+    .intonation-label {
+      font-size: 0.7rem;
+      font-weight: 800;
+      color: var(--text-muted);
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      margin-bottom: 0.25rem;
+    }
+
+    .intonation-val {
+      font-size: 1.4rem;
+      font-weight: 900;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      color: var(--text);
+    }
+    .intonation-val.in-tune {
+      color: var(--success);
+      text-shadow: 0 0 10px rgba(16, 185, 129, 0.7);
+    }
+
+    .intonation-sub {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-top: 0.2rem;
+    }
+
+    .intonation-vs {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+
+    .intonation-result-container {
+      grid-column: 1 / -1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.5rem;
+      background: rgba(10, 15, 29, 0.85);
+      border-radius: 8px;
+      padding: 0.75rem;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      margin-top: 0.25rem;
+    }
+
+    .delta-val {
+      font-size: 1.7rem;
+      font-weight: 900;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      color: var(--primary);
+    }
+
+    .saddle-badge {
+      padding: 0.45rem 0.9rem;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      text-align: center;
+      text-transform: uppercase;
+    }
+    .saddle-badge.sharp {
+      background: rgba(239, 68, 68, 0.2);
+      color: #f87171;
+      border: 1px solid #ef4444;
+      box-shadow: 0 0 12px rgba(239, 68, 68, 0.35);
+    }
+    .saddle-badge.flat {
+      background: rgba(59, 130, 246, 0.2);
+      color: #60a5fa;
+      border: 1px solid #3b82f6;
+      box-shadow: 0 0 12px rgba(59, 130, 246, 0.35);
+    }
+    .saddle-badge.perfect {
+      background: rgba(16, 185, 129, 0.25);
+      color: #34d399;
+      border: 1px solid #10b981;
+      box-shadow: 0 0 16px rgba(16, 185, 129, 0.5);
+    }
+    .saddle-badge.listening {
+      background: rgba(56, 189, 248, 0.2);
+      color: var(--primary);
+      border: 1px solid var(--primary);
+      box-shadow: 0 0 12px rgba(56, 189, 248, 0.35);
+    }
+    .saddle-badge.waiting {
+      background: var(--border);
+      color: var(--text-muted);
+    }
+
+    .intonation-steps {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      text-align: center;
+      margin-bottom: 0.25rem;
+      letter-spacing: 0.3px;
+    }
+
+    .btn-subtle {
+      padding: 0.4rem 0.8rem;
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      border-radius: 6px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .btn-subtle:hover {
+      color: var(--text);
+      border-color: var(--text-muted);
+    }
+
+    /* Controls Section */
+    .controls-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+
+    label {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    select, input[type="number"], input[type="text"], input[type="range"] {
+      width: 100%;
+      padding: 0.6rem;
+      background-color: var(--panel-bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 0.95rem;
+    }
+
+    select:focus, input:focus, button:focus, a:focus {
+      outline: 2px solid var(--focus-ring);
+      outline-offset: 2px;
+    }
+
+    .string-buttons {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(42px, 1fr));
+      gap: 0.4rem;
+      margin-top: 0.25rem;
+    }
+
+    .str-btn {
+      padding: 0.5rem 0.2rem;
+      background: var(--panel-bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-weight: 700;
+      font-size: 0.85rem;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.15s ease;
+    }
+
+    .str-btn.active {
+      background: var(--primary);
+      color: #0f172a;
+      border-color: var(--primary);
+    }
+
+    .btn-action {
+      width: 100%;
+      padding: 0.75rem 1.25rem;
+      background-color: var(--primary);
+      color: #090d16;
+      font-weight: 700;
+      font-size: 1rem;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      transition: background-color 0.15s ease;
+    }
+
+    .btn-action:hover {
+      background-color: var(--primary-hover);
+    }
+
+    .btn-mic-stop {
+      background-color: var(--error);
+      color: #ffffff;
+    }
+
+    .btn-mic-stop:hover {
+      background-color: #dc2626;
+    }
+
+    .signal-bar-wrap {
+      width: 100%;
+      height: 8px;
+      background: var(--panel-bg);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-top: 0.5rem;
+    }
+
+    .signal-fill {
+      height: 100%;
+      width: 0%;
+      background: var(--primary);
+      transition: width 0.05s ease;
+    }
+
+    .status-msg {
+      margin-top: 0.75rem;
+      font-size: 0.85rem;
+      padding: 0.5rem;
+      border-radius: 4px;
+      display: none;
+    }
+
+    .status-success {
+      display: block;
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--success);
+      border: 1px solid var(--success);
+    }
+
+    footer {
+      max-width: 1200px;
+      width: 100%;
+      margin: 1.5rem auto 0 auto;
+      padding-top: 1rem;
+      border-top: 1px solid var(--border);
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    footer a {
+      color: var(--primary);
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand-title">
+      acu-gtune
+      <span class="badge-precision">±0.1¢ Precision Strobe</span>
+    </div>
+    <div id="connStatus" style="font-size: 0.85rem; color: var(--text-muted);">● Localhost (127.0.0.1)</div>
+  </header>
+
+  <main>
+    <!-- Strobe Visualizer Card -->
+    <section class="card strobe-container" aria-label="Stroboscopic Display">
+      <div class="canvas-wrapper">
+        <canvas id="strobeCanvas" width="460" height="460" aria-label="Rotating Peterson Strobe Disc"></canvas>
+      </div>
+
+      <div class="cents-meter-container">
+        <div class="cents-scale-labels">
+          <span>-50</span>
+          <span>-25</span>
+          <span>-10</span>
+          <span class="scale-zero">0</span>
+          <span>+10</span>
+          <span>+25</span>
+          <span>+50</span>
+        </div>
+        <div class="cents-meter">
+          <div class="cents-sweet-spot" title="In-Tune Sweet Spot (±0.1¢ target)"></div>
+          <div class="cents-tick mark-m50"></div>
+          <div class="cents-tick mark-m25"></div>
+          <div class="cents-tick mark-m10"></div>
+          <div class="cents-center-mark"></div>
+          <div class="cents-tick mark-p10"></div>
+          <div class="cents-tick mark-p25"></div>
+          <div class="cents-tick mark-p50"></div>
+          <div id="centsNeedle" class="cents-needle"></div>
+        </div>
+      </div>
+      <!-- Intonation Setup HUD (visible when Intonation Mode is ON) -->
+      <div id="intonationHud" class="intonation-hud" style="display: none;" aria-label="Intonation Setup Comparison">
+        <div class="intonation-steps" style="grid-column: 1 / -1;">
+          Workflow: 1. Pluck 12th Harmonic &bull; 2. Pluck 12th Fretted &bull; 3. Adjust Bridge Saddle
+        </div>
+
+        <div id="harmonicCard" class="intonation-card selected" title="Click to select for capture">
+          <div class="intonation-label">12TH FRET HARMONIC</div>
+          <div id="harmonicCentsDisplay" class="intonation-val">--</div>
+          <div id="harmonicHzDisplay" class="intonation-sub">Pluck 12th harmonic</div>
+        </div>
+
+        <div class="intonation-vs">VS</div>
+
+        <div id="frettedCard" class="intonation-card" title="Click to select for capture">
+          <div class="intonation-label">12TH FRET FRETTED</div>
+          <div id="frettedCentsDisplay" class="intonation-val">--</div>
+          <div id="frettedHzDisplay" class="intonation-sub">Fret 12 and pluck</div>
+        </div>
+
+        <div class="intonation-result-container">
+          <div class="intonation-label">INTONATION DELTA (FRETTED − HARMONIC)</div>
+          <div id="deltaDisplay" class="delta-val">-- ¢</div>
+          <div id="saddleAdviceBadge" class="saddle-badge waiting">PLUCK 12TH HARMONIC</div>
+          <button id="resetIntonationPairBtn" class="btn-subtle" type="button" title="Clear captured readings to re-check this string or proceed to next string (Shortcut: Spacebar)">
+            🔄 Clear Readings / Next String (Space)
+          </button>
+        </div>
+      </div>
+
+      <div class="note-hud">
+        <div>
+          <div style="font-size: 0.75rem; color: var(--text-muted);">DETECTED NOTE</div>
+          <div id="noteDisplay" class="note-big">--</div>
+          <div id="targetHz" style="font-size: 0.85rem; color: var(--text-muted);">Target: -- Hz</div>
+        </div>
+        <div>
+          <div id="lockBadge" class="lock-badge">READY / PLUCK STRING</div>
+        </div>
+        <div>
+          <div style="font-size: 0.75rem; color: var(--text-muted);">CENTS OFFSET</div>
+          <div id="centsDisplay" class="cents-readout">0.0 ¢</div>
+          <div id="detectedHz" style="font-size: 0.85rem; color: var(--text-muted);">In: -- Hz</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tuning & Preset Controls Card -->
+    <aside class="card controls-grid" aria-label="Tuner Controls">
+      <h2 style="font-size: 1.15rem; font-weight: 700;">Tuner Controls <span id="dirtyIndicator" style="display: none; color: var(--primary);">*</span></h2>
+
+      <button id="intonationToggleBtn" class="btn-intonation" type="button" aria-pressed="false">
+        <span>⚖️</span> <span id="intonationBtnText">Intonation Setup Mode: OFF</span>
+      </button>
+
+      <button id="micToggleBtn" class="btn-action">
+        <span>🎤</span> <span id="micBtnText">Start Microphone</span>
+      </button>
+
+      <div class="form-group">
+        <label for="signalMeter">Audio Input Level</label>
+        <div class="signal-bar-wrap">
+          <div id="signalFill" class="signal-fill"></div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="instrumentSelect">Instrument</label>
+        <select id="instrumentSelect">
+          <option value="guitar_6">6-String Guitar</option>
+          <option value="guitar_7">7-String Guitar</option>
+          <option value="bass_4">4-String Bass</option>
+          <option value="bass_5">5-String Bass</option>
+          <option value="chromatic">Chromatic (All Notes)</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="tuningSelect">Tuning</label>
+        <select id="tuningSelect">
+          <option value="standard">Standard (E A D G B E)</option>
+          <option value="drop_d">Drop D</option>
+          <option value="dadgad">DADGAD</option>
+          <option value="open_g">Open G</option>
+          <option value="open_d">Open D</option>
+          <option value="half_step">Half Step Down (Eb)</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>String Filter</label>
+        <div id="stringButtonGroup" class="string-buttons">
+          <button class="str-btn active" data-note="auto">Auto</button>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="a4Input">Concert A4 Reference (Hz)</label>
+        <input type="number" id="a4Input" min="400" max="480" step="0.1" value="440.0">
+      </div>
+
+      <div class="form-group">
+        <label for="toleranceInput">Tolerance Window (Cents)</label>
+        <input type="number" id="toleranceInput" min="0.01" max="2.0" step="0.05" value="0.2">
+      </div>
+
+      <div class="form-group">
+        <label for="resolutionSelect">Display Resolution</label>
+        <select id="resolutionSelect">
+          <option value="0.2" selected>0.2¢ (Recommended - Stable &amp; Smooth)</option>
+          <option value="0.1">0.1¢ (High Precision)</option>
+          <option value="0.5">0.5¢ (Broad Guidance)</option>
+        </select>
+      </div>
+
+      <button id="savePresetBtn" class="btn-action" style="background: var(--panel-bg); color: var(--text); border: 1px solid var(--border);">
+        Save as Default Preset
+      </button>
+      <div id="saveAlert" class="status-msg" role="alert"></div>
+    </aside>
+  </main>
+
+  <footer>
+    <div>acu-gtune v0.1.0 • Privacy by Design (Zero Telemetry)</div>
+    <!-- GNU AGPL-3.0 Section 13 Source Code Notice Requirement -->
+    <div>
+      <a href="https://github.com/joelontheroad/acu-gtune" target="_blank" rel="noopener noreferrer">Source Code (GNU AGPLv3)</a>
+    </div>
+  </footer>
+
+  <script>
+    // Offline-only local stroboscopic tuner engine
+    const canvas = document.getElementById('strobeCanvas');
+    const ctx = canvas.getContext('2d');
+    const noteDisplay = document.getElementById('noteDisplay');
+    const centsDisplay = document.getElementById('centsDisplay');
+    const targetHzDisplay = document.getElementById('targetHz');
+    const detectedHzDisplay = document.getElementById('detectedHz');
+    const lockBadge = document.getElementById('lockBadge');
+    const centsNeedle = document.getElementById('centsNeedle');
+    const micToggleBtn = document.getElementById('micToggleBtn');
+    const micBtnText = document.getElementById('micBtnText');
+    const signalFill = document.getElementById('signalFill');
+    const instrumentSelect = document.getElementById('instrumentSelect');
+    const tuningSelect = document.getElementById('tuningSelect');
+    const stringButtonGroup = document.getElementById('stringButtonGroup');
+    const a4Input = document.getElementById('a4Input');
+    const toleranceInput = document.getElementById('toleranceInput');
+    const savePresetBtn = document.getElementById('savePresetBtn');
+    const saveAlert = document.getElementById('saveAlert');
+    const dirtyIndicator = document.getElementById('dirtyIndicator');
+
+    // Intonation Mode DOM Elements
+    const intonationToggleBtn = document.getElementById('intonationToggleBtn');
+    const intonationBtnText = document.getElementById('intonationBtnText');
+    const intonationHud = document.getElementById('intonationHud');
+    const harmonicCard = document.getElementById('harmonicCard');
+    const frettedCard = document.getElementById('frettedCard');
+    const harmonicCentsDisplay = document.getElementById('harmonicCentsDisplay');
+    const harmonicHzDisplay = document.getElementById('harmonicHzDisplay');
+    const frettedCentsDisplay = document.getElementById('frettedCentsDisplay');
+    const frettedHzDisplay = document.getElementById('frettedHzDisplay');
+    const deltaDisplay = document.getElementById('deltaDisplay');
+    const saddleAdviceBadge = document.getElementById('saddleAdviceBadge');
+    const resetIntonationPairBtn = document.getElementById('resetIntonationPairBtn');
+    const resolutionSelect = document.getElementById('resolutionSelect');
+
+    // Display Quantization & Temporal Smoothing State
+    let smoothedCents = null;
+
+    function getResolutionStep() {
+      return resolutionSelect ? (parseFloat(resolutionSelect.value) || 0.2) : 0.2;
+    }
+
+    function formatCents(cents, step = null) {
+      if (cents === null || cents === undefined || isNaN(cents)) return '-- ¢';
+      const s = step || getResolutionStep();
+      const rounded = Math.round(cents / s) * s;
+      const sign = rounded > 0 ? '+' : '';
+      return sign + rounded.toFixed(1) + ' ¢';
+    }
+
+    // Intonation Setup State & Helper Functions
+    let isIntonationMode = false;
+    let intonationSlot = 'harmonic'; // 'harmonic' | 'fretted'
+    let harmonicCapture = null;
+    let frettedCapture = null;
+
+    function selectIntonationSlot(slot) {
+      intonationSlot = slot;
+      activeTrackFreq = null; // Clear pitch continuity lock so next note latches immediately
+      smoothedCents = null;
+      if (slot === 'harmonic') {
+        harmonicCard.classList.add('selected');
+        frettedCard.classList.remove('selected');
+      } else {
+        frettedCard.classList.add('selected');
+        harmonicCard.classList.remove('selected');
+      }
+    }
+
+    function updateIntonationDeltaUI() {
+      const tol = parseFloat(toleranceInput.value) || 0.2;
+      const step = getResolutionStep();
+      if (harmonicCapture && frettedCapture) {
+        const delta = frettedCapture.cents - harmonicCapture.cents;
+        deltaDisplay.textContent = formatCents(delta, step);
+        if (Math.abs(delta) <= tol) {
+          deltaDisplay.className = 'delta-val in-tune';
+          saddleAdviceBadge.className = 'saddle-badge perfect';
+          saddleAdviceBadge.textContent = 'INTONATION PERFECT (±' + tol.toFixed(1) + '¢)';
+        } else if (delta > tol) {
+          deltaDisplay.className = 'delta-val';
+          saddleAdviceBadge.className = 'saddle-badge sharp';
+          saddleAdviceBadge.textContent = 'FRETTED IS SHARP → MOVE SADDLE BACK';
+        } else {
+          deltaDisplay.className = 'delta-val';
+          saddleAdviceBadge.className = 'saddle-badge flat';
+          saddleAdviceBadge.textContent = 'FRETTED IS FLAT → MOVE SADDLE FORWARD';
+        }
+      } else if (harmonicCapture && !frettedCapture) {
+        deltaDisplay.textContent = '-- ¢';
+        deltaDisplay.className = 'delta-val';
+        saddleAdviceBadge.className = 'saddle-badge waiting';
+        saddleAdviceBadge.textContent = 'NOW PLUCK 12TH FRETTED NOTE';
+      } else if (!harmonicCapture && frettedCapture) {
+        deltaDisplay.textContent = '-- ¢';
+        deltaDisplay.className = 'delta-val';
+        saddleAdviceBadge.className = 'saddle-badge waiting';
+        saddleAdviceBadge.textContent = 'NOW PLUCK 12TH HARMONIC';
+      } else {
+        deltaDisplay.textContent = '-- ¢';
+        deltaDisplay.className = 'delta-val';
+        saddleAdviceBadge.className = 'saddle-badge waiting';
+        saddleAdviceBadge.textContent = 'PLUCK 12TH HARMONIC';
+      }
+    }
+
+    function resetIntonationPair() {
+      harmonicCapture = null;
+      frettedCapture = null;
+      activeTrackFreq = null;
+      smoothedCents = null;
+      harmonicCard.classList.remove('captured');
+      frettedCard.classList.remove('captured');
+      harmonicCentsDisplay.textContent = '--';
+      harmonicCentsDisplay.className = 'intonation-val';
+      harmonicHzDisplay.textContent = 'Pluck 12th harmonic';
+      frettedCentsDisplay.textContent = '--';
+      frettedCentsDisplay.className = 'intonation-val';
+      frettedHzDisplay.textContent = 'Fret 12 and pluck';
+      selectIntonationSlot('harmonic');
+      updateIntonationDeltaUI();
+    }
+
+    function recordIntonationReading(match, cents, freq, isInTune) {
+      if (!isIntonationMode) return;
+      const step = getResolutionStep();
+      const label = formatCents(cents, step);
+      const hzText = match.note + ' (' + freq.toFixed(1) + ' Hz)';
+
+      if (intonationSlot === 'harmonic') {
+        harmonicCapture = { note: match.note, cents: cents, hz: freq, inTune: isInTune };
+        harmonicCentsDisplay.textContent = label;
+        harmonicCentsDisplay.className = isInTune ? 'intonation-val in-tune' : 'intonation-val';
+        harmonicHzDisplay.textContent = hzText;
+        harmonicCard.classList.add('captured');
+      } else {
+        frettedCapture = { note: match.note, cents: cents, hz: freq, inTune: isInTune };
+        frettedCentsDisplay.textContent = label;
+        frettedCentsDisplay.className = isInTune ? 'intonation-val in-tune' : 'intonation-val';
+        frettedHzDisplay.textContent = hzText;
+        frettedCard.classList.add('captured');
+      }
+      if (harmonicCapture && frettedCapture) {
+        updateIntonationDeltaUI();
+      }
+    }
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('token');
+
+    const TUNINGS = {
+      guitar_6: {
+        standard: ['E2', 'A2', 'D3', 'G3', 'B3', 'E4'],
+        drop_d: ['D2', 'A2', 'D3', 'G3', 'B3', 'E4'],
+        dadgad: ['D2', 'A2', 'D3', 'G3', 'A3', 'D4'],
+        open_g: ['D2', 'G2', 'D3', 'G3', 'B3', 'D4'],
+        open_d: ['D2', 'A2', 'D3', 'F#3', 'A3', 'D4'],
+        half_step: ['D#2', 'G#2', 'C#3', 'F#3', 'A#3', 'D#4']
+      },
+      guitar_7: {
+        standard: ['B1', 'E2', 'A2', 'D3', 'G3', 'B3', 'E4'],
+        drop_a: ['A1', 'E2', 'A2', 'D3', 'G3', 'B3', 'E4']
+      },
+      bass_4: {
+        standard: ['E1', 'A1', 'D2', 'G2'],
+        drop_d: ['D1', 'A1', 'D2', 'G2']
+      },
+      bass_5: {
+        standard: ['B0', 'E1', 'A1', 'D2', 'G2']
+      },
+      chromatic: {
+        all: []
+      }
+    };
+
+    const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+    let selectedNoteFilter = 'auto';
+
+    function noteToMidi(note) {
+      const match = note.match(/^([A-G]#?)(-?\d+)$/);
+      if (!match) return 69;
+      const pitch = match[1];
+      const oct = parseInt(match[2], 10);
+      return (oct + 1) * 12 + NOTE_NAMES.indexOf(pitch);
+    }
+
+    function midiToHz(midi, a4 = 440.0) {
+      return a4 * Math.pow(2, (midi - 69) / 12);
+    }
+
+    function noteToHz(note, a4 = 440.0) {
+      return midiToHz(noteToMidi(note), a4);
+    }
+
+    // High-Precision Note Matcher with Multi-Octave Harmonic Support for Intonation
+    function hzToNearest(freq, a4 = 440.0, allowed = null, allowOctaves = true) {
+      if (freq <= 0) return { note: '--', target: 0, cents: 0, harmonicTier: 1, tierName: 'OPEN' };
+      if (allowed && allowed.length > 0) {
+        const multipliers = allowOctaves ? [1.0, 2.0, 3.0, 4.0] : [1.0];
+        let best = allowed[0];
+        let bestHz = noteToHz(best, a4);
+        let minCents = Math.abs(1200 * Math.log2(freq / bestHz));
+        let bestTier = 1;
+
+        for (let i = 0; i < allowed.length; i++) {
+          const baseHz = noteToHz(allowed[i], a4);
+          for (let m = 0; m < multipliers.length; m++) {
+            const mult = multipliers[m];
+            const candHz = baseHz * mult;
+            const c = Math.abs(1200 * Math.log2(freq / candHz));
+            if (c < minCents) {
+              minCents = c;
+              best = allowed[i];
+              bestHz = candHz;
+              bestTier = mult === 1.0 ? 1 : (mult === 2.0 ? 2 : (mult === 3.0 ? 3 : 4));
+            }
+          }
+        }
+        const tierName = bestTier === 1 ? 'OPEN' : (bestTier === 2 ? '12th FRET' : 'HARMONIC');
+        return {
+          note: best,
+          target: bestHz,
+          cents: 1200 * Math.log2(freq / bestHz),
+          harmonicTier: bestTier,
+          tierName: tierName
+        };
+      }
+      const semi = 12 * Math.log2(freq / a4);
+      const midi = Math.round(69 + semi);
+      const target = midiToHz(midi, a4);
+      const oct = Math.floor(midi / 12) - 1;
+      const pitch = NOTE_NAMES[((midi % 12) + 12) % 12];
+      return {
+        note: pitch + oct,
+        target: target,
+        cents: 1200 * Math.log2(freq / target),
+        harmonicTier: 1,
+        tierName: 'CHROMATIC'
+      };
+    }
+
+    // Audio & Strobe Animation State
+    let audioCtx = null;
+    let micStream = null;
+    let analyser = null;
+    let isListening = false;
+    let lastTime = performance.now();
+    let strobePhase = 0.0;
+    let detectedFreq = 0.0;
+    let currentCents = 0.0;
+    let currentTargetFreq = 0.0;
+    let currentNote = '--';
+    let inTune = false;
+
+    // Strobe Disc Pattern Parameters (Peterson 400 style concentric octave bands)
+    const NUM_RINGS = 5;
+    const RING_SEGMENTS = [8, 16, 32, 64, 128]; // Double each octave outward
+
+    function drawStrobeDisc() {
+      const w = canvas.width;
+      const h = canvas.height;
+      const cx = w / 2;
+      const cy = h / 2;
+      const maxRadius = w / 2 - 4;
+
+      ctx.clearRect(0, 0, w, h);
+
+      // Background disc
+      ctx.beginPath();
+      ctx.arc(cx, cy, maxRadius, 0, 2 * Math.PI);
+      ctx.fillStyle = '#070b14';
+      ctx.fill();
+
+      const ringWidth = (maxRadius - 30) / NUM_RINGS;
+
+      for (let r = 0; r < NUM_RINGS; r++) {
+        const innerR = 30 + r * ringWidth;
+        const outerR = innerR + ringWidth - 1;
+        const segments = RING_SEGMENTS[r];
+        const step = (2 * Math.PI) / segments;
+
+        // Pattern rotation: speed scales with octave harmonic
+        const ringPhase = strobePhase * (r + 1);
+
+        for (let s = 0; s < segments; s++) {
+          if (s % 2 === 0) {
+            ctx.beginPath();
+            ctx.arc(cx, cy, outerR, s * step + ringPhase, (s + 1) * step + ringPhase);
+            ctx.arc(cx, cy, innerR, (s + 1) * step + ringPhase, s * step + ringPhase, true);
+            ctx.closePath();
+            ctx.fillStyle = inTune ? 'rgba(16, 185, 129, 0.85)' : 'rgba(248, 250, 252, 0.85)';
+            ctx.fill();
+          }
+        }
+      }
+
+      // Center cap
+      ctx.beginPath();
+      ctx.arc(cx, cy, 28, 0, 2 * Math.PI);
+      ctx.fillStyle = inTune ? '#10b981' : '#1e293b';
+      ctx.fill();
+      ctx.strokeStyle = inTune ? '#059669' : '#334155';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+
+      // Outer border ring
+      ctx.beginPath();
+      ctx.arc(cx, cy, maxRadius, 0, 2 * Math.PI);
+      ctx.strokeStyle = inTune ? '#10b981' : '#38bdf8';
+      ctx.lineWidth = 4;
+      ctx.stroke();
+    }
+
+    // Filter and Decay State
+    let filterNode = null;
+    let tunerState = 'IDLE'; // 'IDLE', 'TRACKING', 'HOLD'
+    let holdStartTime = 0;
+    const HOLD_DURATION_MS = 3000;
+    let lastStableReading = null;
+    let previousRms = 0.0;
+    let activeTrackFreq = null;
+
+    function updateFilterCutoff(targetFreq = null) {
+      if (!filterNode || !audioCtx) return;
+      let cutoff = 72; // default guitar low cut
+      const inst = instrumentSelect ? instrumentSelect.value : 'guitar_6';
+      if (inst === 'bass_4' || inst === 'bass_5') {
+        cutoff = 26;
+      } else if (targetFreq && targetFreq > 0) {
+        cutoff = Math.max(26, Math.min(300, targetFreq * 0.82));
+      } else if (selectedNoteFilter !== 'auto') {
+        const a4 = parseFloat(a4Input.value) || 440.0;
+        const noteHz = noteToHz(selectedNoteFilter, a4);
+        cutoff = Math.max(26, Math.min(300, noteHz * 0.82));
+      }
+      filterNode.frequency.setTargetAtTime(cutoff, audioCtx.currentTime, 0.05);
+    }
+
+    // High-Precision YIN algorithm with pitch continuity tracking and decay protection
+    function yinPitch(buffer, sampleRate, minFreq = 25.0, maxFreq = 3200.0, threshold = 0.15, expectedFreq = null, allowGlobalFallback = true) {
+      const maxTau = Math.floor(sampleRate / minFreq);
+      const minTau = Math.floor(sampleRate / maxFreq);
+      const W = maxTau;
+      if (buffer.length < W + maxTau) return 0;
+
+      // Difference function
+      const d = new Float32Array(maxTau + 1);
+      for (let tau = 1; tau <= maxTau; tau++) {
+        let sum = 0;
+        for (let j = 0; j < W; j++) {
+          const delta = buffer[j] - buffer[j + tau];
+          sum += delta * delta;
+        }
+        d[tau] = sum;
+      }
+
+      // CMNDF
+      const cmndf = new Float32Array(maxTau + 1);
+      cmndf[0] = 1.0;
+      let runningSum = 0;
+      for (let tau = 1; tau <= maxTau; tau++) {
+        runningSum += d[tau];
+        cmndf[tau] = runningSum > 0 ? (d[tau] * tau) / runningSum : 1.0;
+      }
+
+      let chosenTau = -1;
+
+      // Continuity Window: If an active note is vibrating, prioritize +/-45 cents band
+      if (expectedFreq && expectedFreq > 0) {
+        const expTau = sampleRate / expectedFreq;
+        const winMin = Math.max(minTau, Math.floor(expTau * Math.pow(2, -45 / 1200)));
+        const winMax = Math.min(maxTau, Math.ceil(expTau * Math.pow(2, 45 / 1200)));
+        if (winMin < winMax) {
+          for (let tau = winMin; tau < winMax; tau++) {
+            if (cmndf[tau] < threshold) {
+              while (tau + 1 < winMax && cmndf[tau + 1] < cmndf[tau]) {
+                tau++;
+              }
+              chosenTau = tau;
+              break;
+            }
+          }
+        }
+      }
+
+      // Global search if allowed and no continuity minimum found
+      if (chosenTau === -1 && allowGlobalFallback) {
+        for (let tau = minTau; tau < maxTau; tau++) {
+          if (cmndf[tau] < threshold) {
+            while (tau + 1 < maxTau && cmndf[tau + 1] < cmndf[tau]) {
+              tau++;
+            }
+            chosenTau = tau;
+            break;
+          }
+        }
+      }
+
+      if (chosenTau === -1) return 0;
+
+      // Parabolic interpolation around minimum
+      const tau = chosenTau;
+      let tauExact = tau;
+      if (tau > 0 && tau < maxTau) {
+        const a = cmndf[tau - 1];
+        const b = cmndf[tau];
+        const c = cmndf[tau + 1];
+        const denom = 2.0 * (a - 2.0 * b + c);
+        if (Math.abs(denom) > 1e-9) {
+          tauExact = tau + (a - c) / denom;
+        }
+      }
+
+      return tauExact > 0 ? sampleRate / tauExact : 0;
+    }
+
+    function animate(now) {
+      const dt = (now - lastTime) / 1000.0;
+      lastTime = now;
+
+      if (isListening) {
+        if (tunerState === 'IDLE') {
+          // Gentle idle strobe disc rotation (~0.35 rev/s)
+          strobePhase += 2.0 * Math.PI * 0.35 * dt;
+        } else if (tunerState === 'HOLD') {
+          // Freeze strobe disc stationary during hold
+        } else if (tunerState === 'TRACKING' && detectedFreq > 0 && currentTargetFreq > 0) {
+          const slip = detectedFreq - currentTargetFreq;
+          strobePhase += slip * 2.0 * Math.PI * dt * 0.3;
+        }
+      }
+
+      drawStrobeDisc();
+      requestAnimationFrame(animate);
+    }
+    requestAnimationFrame(animate);
+
+    // Audio Ingestion Loop with Adaptive High-Pass Filter
+    async function startAudio() {
+      try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        audioCtx = new AudioContext();
+        if (audioCtx.state === 'suspended') {
+          await audioCtx.resume();
+        }
+
+        micStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false
+          }
+        });
+
+        const source = audioCtx.createMediaStreamSource(micStream);
+
+        // Adaptive high-pass filter to reject low-frequency room rumble and 50/60 Hz hum
+        filterNode = audioCtx.createBiquadFilter();
+        filterNode.type = 'highpass';
+        updateFilterCutoff();
+
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 4096;
+
+        source.connect(filterNode);
+        filterNode.connect(analyser);
+
+        isListening = true;
+        tunerState = 'IDLE';
+        lastStableReading = null;
+        activeTrackFreq = null;
+        micToggleBtn.className = 'btn-action btn-mic-stop';
+        micBtnText.textContent = 'Stop Microphone';
+        resetToIdle();
+
+        processAudioLoop();
+      } catch (err) {
+        alert('Could not access microphone: ' + err.message);
+      }
+    }
+
+    function stopAudio() {
+      if (micStream) {
+        micStream.getTracks().forEach(t => t.stop());
+        micStream = null;
+      }
+      if (audioCtx) {
+        audioCtx.close();
+        audioCtx = null;
+      }
+      filterNode = null;
+      isListening = false;
+      tunerState = 'IDLE';
+      lastStableReading = null;
+      activeTrackFreq = null;
+      micToggleBtn.className = 'btn-action';
+      micBtnText.textContent = 'Start Microphone';
+      signalFill.style.width = '0%';
+      detectedFreq = 0;
+      currentNote = '--';
+      noteDisplay.textContent = '--';
+      noteDisplay.className = 'note-big';
+      centsDisplay.textContent = '0.0 ¢';
+      centsDisplay.className = 'cents-readout';
+      targetHzDisplay.textContent = 'Target: -- Hz';
+      detectedHzDisplay.textContent = 'In: -- Hz';
+      lockBadge.className = 'lock-badge';
+      lockBadge.textContent = 'READY / PLUCK STRING';
+      centsNeedle.style.left = '50%';
+      centsNeedle.className = 'cents-needle';
+    }
+
+    micToggleBtn.addEventListener('click', () => {
+      if (isListening) stopAudio();
+      else startAudio();
+    });
+
+    const audioBuffer = new Float32Array(4096);
+    const TRACK_THRESHOLD = 0.005; // Sensitive threshold captures soft harmonics and thumb plucks
+    const ATTACK_THRESHOLD = 0.003; // Responsive attack transient threshold
+
+    function resetToIdle() {
+      tunerState = 'IDLE';
+      lastStableReading = null;
+      activeTrackFreq = null;
+      smoothedCents = null;
+      detectedFreq = 0.0;
+      currentTargetFreq = 0.0;
+      currentCents = 0.0;
+      inTune = false;
+      centsNeedle.style.left = '50%';
+      centsNeedle.className = 'cents-needle standby';
+      noteDisplay.textContent = '--';
+      noteDisplay.className = 'note-big';
+      centsDisplay.textContent = '0.0 ¢';
+      centsDisplay.className = 'cents-readout';
+      targetHzDisplay.textContent = 'Target: -- Hz';
+      detectedHzDisplay.textContent = 'In: -- Hz';
+      lockBadge.className = 'lock-badge';
+      lockBadge.textContent = 'READY / PLUCK STRING';
+      updateFilterCutoff();
+    }
+
+    function processAudioLoop() {
+      if (!isListening || !analyser) return;
+
+      analyser.getFloatTimeDomainData(audioBuffer);
+
+      // Calculate RMS amplitude
+      let sumSq = 0;
+      for (let i = 0; i < audioBuffer.length; i++) {
+        sumSq += audioBuffer[i] * audioBuffer[i];
+      }
+      const rms = Math.sqrt(sumSq / audioBuffer.length);
+      const signalPct = Math.min(100, Math.round(rms * 900));
+      signalFill.style.width = signalPct + '%';
+
+      const a4 = parseFloat(a4Input.value) || 440.0;
+      const tol = parseFloat(toleranceInput.value) || 0.2;
+      const isAttack = (rms - previousRms) > ATTACK_THRESHOLD && rms >= 0.005;
+      previousRms = rms;
+
+      if (isAttack) {
+        activeTrackFreq = null; // Clear pitch continuity lock on new pluck
+      }
+
+      let pitchFound = false;
+
+      // Decoupled Audio Ingestion: Always analyze audio if signal is audible or attack occurs
+      if (rms >= TRACK_THRESHOLD || isAttack) {
+        const allowGlobal = isAttack || (activeTrackFreq === null) || (tunerState !== 'TRACKING');
+        const pitch = yinPitch(
+          audioBuffer,
+          audioCtx.sampleRate,
+          25.0,
+          3200.0,
+          0.15,
+          (isAttack ? null : activeTrackFreq),
+          allowGlobal
+        );
+
+        if (pitch > 25.0) {
+          let isValid = true;
+          if (activeTrackFreq && !isAttack && tunerState === 'TRACKING') {
+            // Check if pitch jumped wildly (> 40 cents) during quiet sustain
+            const jumpCents = Math.abs(1200 * Math.log2(pitch / activeTrackFreq));
+            const isOctaveHarmonic = (jumpCents > 1150 && jumpCents < 1250) || (jumpCents > 2350 && jumpCents < 2450);
+            if (jumpCents > 40 && !isOctaveHarmonic) {
+              isValid = false;
+            }
+          }
+
+          if (isValid) {
+            pitchFound = true;
+            tunerState = 'TRACKING';
+            detectedFreq = pitch;
+            activeTrackFreq = pitch;
+
+            let allowed = null;
+            if (selectedNoteFilter !== 'auto') {
+              allowed = [selectedNoteFilter];
+            } else {
+              const inst = instrumentSelect.value;
+              const tun = tuningSelect.value;
+              allowed = (TUNINGS[inst] && TUNINGS[inst][tun]) ? TUNINGS[inst][tun] : null;
+            }
+
+            const match = hzToNearest(detectedFreq, a4, allowed, true);
+            currentNote = match.note;
+            currentTargetFreq = match.target;
+            currentCents = match.cents;
+            inTune = Math.abs(currentCents) <= tol;
+
+            // EMA Smoothing on Cents for steady needle movement without physical finger jitter
+            const step = getResolutionStep();
+            if (isAttack || smoothedCents === null) {
+              smoothedCents = currentCents;
+            } else {
+              const alpha = 0.35;
+              smoothedCents = alpha * currentCents + (1 - alpha) * smoothedCents;
+            }
+
+            const tierBadge = match.harmonicTier > 1 ? ` [${match.tierName}]` : '';
+
+            // Save pristine reading for decay hold
+            lastStableReading = {
+              note: currentNote,
+              target: currentTargetFreq,
+              detected: detectedFreq,
+              cents: currentCents,
+              smoothedCents: smoothedCents,
+              inTune: inTune,
+              tierBadge: tierBadge
+            };
+
+            // Record into intonation slot if intonation mode is enabled
+            recordIntonationReading(match, currentCents, detectedFreq, inTune);
+
+            // Responsive Intonation Message: While actively tracking a pluck, hide the waiting prompt!
+            if (isIntonationMode) {
+              if (intonationSlot === 'harmonic') {
+                saddleAdviceBadge.className = 'saddle-badge listening';
+                saddleAdviceBadge.textContent = '🎯 MEASURING 12TH HARMONIC...';
+              } else {
+                saddleAdviceBadge.className = 'saddle-badge listening';
+                saddleAdviceBadge.textContent = '🎯 MEASURING 12TH FRETTED NOTE...';
+              }
+            }
+
+            // Update low cut filter to track this note's fundamental
+            updateFilterCutoff(currentTargetFreq);
+
+            noteDisplay.textContent = currentNote;
+            noteDisplay.className = inTune ? 'note-big in-tune' : 'note-big';
+            centsDisplay.textContent = formatCents(currentCents, step);
+            centsDisplay.className = inTune ? 'cents-readout in-tune' : 'cents-readout';
+            targetHzDisplay.textContent = 'Target: ' + currentTargetFreq.toFixed(2) + ' Hz';
+            detectedHzDisplay.textContent = 'In: ' + detectedFreq.toFixed(2) + ' Hz';
+
+            lockBadge.className = inTune ? 'lock-badge active' : 'lock-badge';
+            lockBadge.textContent = inTune ? `IN TUNE ±${tol.toFixed(1)}¢${tierBadge}` : `TUNING${tierBadge}...`;
+
+            // Update 4x needle position using smoothed cents (-50c to +50c mapped to 0% - 100%)
+            const clamped = Math.max(-50, Math.min(50, smoothedCents));
+            const needlePos = ((clamped + 50) / 100) * 100;
+            centsNeedle.style.left = needlePos + '%';
+            centsNeedle.className = inTune ? 'cents-needle in-tune' : 'cents-needle';
+          }
+        }
+      }
+
+      // Visual Hold & Decay Management (never blocks audio listening)
+      if (!pitchFound) {
+        if (lastStableReading) {
+          if (tunerState !== 'HOLD') {
+            tunerState = 'HOLD';
+            holdStartTime = performance.now();
+            if (isIntonationMode) {
+              if (intonationSlot === 'harmonic' && harmonicCapture && !frettedCapture) {
+                // Auto-advance to fretted slot ready for next pluck
+                selectIntonationSlot('fretted');
+              }
+              // Update intonation advice badge now that the pluck has finished
+              updateIntonationDeltaUI();
+            }
+          }
+
+          const elapsed = performance.now() - holdStartTime;
+          if (elapsed < HOLD_DURATION_MS) {
+            const step = getResolutionStep();
+            const clamped = Math.max(-50, Math.min(50, lastStableReading.smoothedCents || lastStableReading.cents));
+            const needlePos = ((clamped + 50) / 100) * 100;
+            centsNeedle.style.left = needlePos + '%';
+            centsNeedle.className = lastStableReading.inTune ? 'cents-needle in-tune' : 'cents-needle decay-hold';
+
+            noteDisplay.textContent = lastStableReading.note;
+            noteDisplay.className = lastStableReading.inTune ? 'note-big in-tune' : 'note-big';
+            centsDisplay.textContent = formatCents(lastStableReading.cents, step);
+            centsDisplay.className = lastStableReading.inTune ? 'cents-readout in-tune' : 'cents-readout';
+            targetHzDisplay.textContent = 'Target: ' + lastStableReading.target.toFixed(2) + ' Hz';
+            detectedHzDisplay.textContent = 'In: ' + lastStableReading.detected.toFixed(2) + ' Hz';
+
+            const remainSec = Math.max(1, Math.ceil((HOLD_DURATION_MS - elapsed) / 1000));
+            lockBadge.className = 'lock-badge decay-hold';
+            const tierStr = lastStableReading.tierBadge || '';
+            lockBadge.textContent = 'HOLD (' + remainSec + 's)' + tierStr;
+          } else {
+            // Hold expired: Graceful UI Reset to IDLE
+            resetToIdle();
+          }
+        } else if (tunerState !== 'IDLE') {
+          resetToIdle();
+        }
+      }
+
+      setTimeout(processAudioLoop, 40);
+    }
+
+    // UI Updates on dropdown change
+    function updateStringButtons() {
+      const inst = instrumentSelect.value;
+      const tun = tuningSelect.value;
+      const notes = (TUNINGS[inst] && TUNINGS[inst][tun]) ? TUNINGS[inst][tun] : [];
+
+      stringButtonGroup.innerHTML = '<button class="str-btn active" data-note="auto">Auto</button>';
+      notes.forEach(n => {
+        const btn = document.createElement('button');
+        btn.className = 'str-btn';
+        btn.dataset.note = n;
+        btn.textContent = n;
+        stringButtonGroup.appendChild(btn);
+      });
+
+      selectedNoteFilter = 'auto';
+    }
+
+    instrumentSelect.addEventListener('change', () => {
+      dirtyIndicator.style.display = 'inline';
+      const inst = instrumentSelect.value;
+      tuningSelect.innerHTML = '';
+      if (TUNINGS[inst]) {
+        Object.keys(TUNINGS[inst]).forEach(k => {
+          const opt = document.createElement('option');
+          opt.value = k;
+          opt.textContent = k.replace('_', ' ').toUpperCase();
+          tuningSelect.appendChild(opt);
+        });
+      }
+      updateStringButtons();
+      updateFilterCutoff();
+    });
+
+    tuningSelect.addEventListener('change', () => {
+      dirtyIndicator.style.display = 'inline';
+      updateStringButtons();
+      updateFilterCutoff();
+    });
+
+    stringButtonGroup.addEventListener('click', (e) => {
+      if (e.target.tagName === 'BUTTON') {
+        stringButtonGroup.querySelectorAll('.str-btn').forEach(b => b.classList.remove('active'));
+        e.target.classList.add('active');
+        selectedNoteFilter = e.target.dataset.note;
+        updateFilterCutoff();
+      }
+    });
+
+    [a4Input, toleranceInput, resolutionSelect].forEach(inp => {
+      inp.addEventListener('input', () => {
+        dirtyIndicator.style.display = 'inline';
+      });
+      inp.addEventListener('change', () => {
+        dirtyIndicator.style.display = 'inline';
+        if (lastStableReading) {
+          const step = getResolutionStep();
+          centsDisplay.textContent = formatCents(lastStableReading.cents, step);
+        }
+        if (isIntonationMode) {
+          updateIntonationDeltaUI();
+        }
+      });
+    });
+
+    // Preset loading and saving
+    async function loadPreset() {
+      try {
+        const res = await fetch('/api/preset', {
+          headers: token ? { 'Authorization': 'Bearer ' + token } : {}
+        });
+        if (res.ok) {
+          const p = await res.json();
+          if (p.instrument) instrumentSelect.value = p.instrument;
+          instrumentSelect.dispatchEvent(new Event('change'));
+          if (p.tuning) tuningSelect.value = p.tuning;
+          if (p.a4_calibration) a4Input.value = p.a4_calibration;
+          if (p.tolerance_cents) toleranceInput.value = p.tolerance_cents;
+          if (p.cents_resolution && resolutionSelect) resolutionSelect.value = p.cents_resolution;
+          updateStringButtons();
+          dirtyIndicator.style.display = 'none';
+        }
+      } catch (err) {
+        console.error('Failed to load preset', err);
+      }
+    }
+
+    savePresetBtn.addEventListener('click', async () => {
+      const payload = {
+        name: 'default',
+        instrument: instrumentSelect.value,
+        tuning: tuningSelect.value,
+        a4_calibration: parseFloat(a4Input.value) || 440.0,
+        tolerance_cents: parseFloat(toleranceInput.value) || 0.2,
+        cents_resolution: parseFloat(resolutionSelect.value) || 0.2,
+        noise_gate: 0.005,
+        strobe_mode: 'disc',
+        theme: 'auto',
+        max_items: 50,
+        enable_cache: true
+      };
+
+      try {
+        const res = await fetch('/api/preset', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': 'Bearer ' + token } : {})
+          },
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          dirtyIndicator.style.display = 'none';
+          saveAlert.textContent = 'Preset saved to local XDG configuration.';
+          saveAlert.className = 'status-msg status-success';
+        } else {
+          const err = await res.json();
+          saveAlert.textContent = err.detail || 'Failed to save preset.';
+          saveAlert.className = 'status-msg';
+          saveAlert.style.display = 'block';
+        }
+      } catch (err) {
+        saveAlert.textContent = 'Network or server error.';
+        saveAlert.className = 'status-msg';
+        saveAlert.style.display = 'block';
+      }
+    });
+
+    // Intonation Mode Toggle & UI Event Handlers
+    intonationToggleBtn.addEventListener('click', () => {
+      isIntonationMode = !isIntonationMode;
+      if (isIntonationMode) {
+        intonationToggleBtn.classList.add('active');
+        intonationToggleBtn.setAttribute('aria-pressed', 'true');
+        intonationBtnText.textContent = 'Intonation Setup Mode: ON';
+        intonationHud.style.display = 'grid';
+        resetIntonationPair();
+      } else {
+        intonationToggleBtn.classList.remove('active');
+        intonationToggleBtn.setAttribute('aria-pressed', 'false');
+        intonationBtnText.textContent = 'Intonation Setup Mode: OFF';
+        intonationHud.style.display = 'none';
+      }
+    });
+
+    harmonicCard.addEventListener('click', () => {
+      selectIntonationSlot('harmonic');
+    });
+
+    frettedCard.addEventListener('click', () => {
+      selectIntonationSlot('fretted');
+    });
+
+    resetIntonationPairBtn.addEventListener('click', () => {
+      resetIntonationPair();
+    });
+
+    window.addEventListener('keydown', (e) => {
+      if (['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
+        return;
+      }
+      if (e.code === 'Space') {
+        if (isIntonationMode) {
+          e.preventDefault();
+          resetIntonationPair();
+        }
+      } else if (e.code === 'Tab') {
+        if (isIntonationMode) {
+          e.preventDefault();
+          selectIntonationSlot(intonationSlot === 'harmonic' ? 'fretted' : 'harmonic');
+        }
+      }
+    });
+
+    updateStringButtons();
+    loadPreset();
+  </script>
+</body>
+</html>

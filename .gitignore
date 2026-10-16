@@ -1,0 +1,96 @@
+# SPDX-FileCopyrightText: 2026 Joel Greenberg
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+# Secrets & Environment Files (CRITICAL)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.cert
+*.crt
+secrets/
+credentials.json
+
+# Operating System Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.venv
+venv/
+ENV/
+env/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Node & Frontend
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+.pnpm-debug.log*
+.npm
+package-lock.json.bak
+dist/
+dist-ssr/
+*.local
+
+# IDEs & Editors
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+.obsidian/
+*.swp
+*.swo
+*~
+*.bak
+
+# Temporary / Scratch Files
+tmp/
+temp/
+scratch/
+*.tmp
+
+# Internal AI Agent Directives & Local Rules
+.agents/
+AGENTS.md
+
+# Local / Personal Notes
+JG Notes/
