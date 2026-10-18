@@ -70,7 +70,7 @@ class TunerPreset(BaseModel):
     )
     strobe_mode: str = Field(
         default="disc",
-        description="Visual strobe style: 'disc' (Peterson rotating wheel) or 'bars' (linear)",
+        description="Visual strobe style: 'disc' (concentric rotating wheel) or 'bars' (linear)",
     )
     theme: str = Field(default="auto", description="UI theme: 'auto', 'light', or 'dark'")
     max_items: int = Field(default=50, ge=1, le=1000, description="Maximum items for list views")

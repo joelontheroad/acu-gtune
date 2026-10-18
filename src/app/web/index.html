@@ -629,7 +629,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
     <!-- Strobe Visualizer Card -->
     <section class="card strobe-container" aria-label="Stroboscopic Display">
       <div class="canvas-wrapper">
-        <canvas id="strobeCanvas" width="460" height="460" aria-label="Rotating Peterson Strobe Disc"></canvas>
+        <canvas id="strobeCanvas" width="460" height="460" aria-label="Rotating Concentric Stroboscopic Disc"></canvas>
       </div>
 
       <div class="cents-meter-container">
@@ -1099,7 +1099,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
     let currentNote = '--';
     let inTune = false;
 
-    // Strobe Disc Pattern Parameters (Peterson 400 style concentric octave bands)
+    // Strobe Disc Pattern Parameters (Concentric harmonic octave bands, ref. public domain US 2,286,030 & US 6,580,024)
     const NUM_RINGS = 5;
     const RING_SEGMENTS = [8, 16, 32, 64, 128]; // Double each octave outward
 

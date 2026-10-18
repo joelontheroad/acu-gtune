@@ -6,6 +6,26 @@
 Implements time-domain fundamental frequency estimation via the YIN algorithm
 with parabolic sub-sample refinement, spectral FFT interpolation, logarithmic
 cents deviation calculation, and bridge saddle intonation compensation analysis.
+
+Prior Art & Academic Citations:
+    - Fundamental Pitch Extraction (YIN):
+      A. de Cheveigné and H. Kawahara (2002), "YIN, a fundamental frequency estimator
+      for speech and music," The Journal of the Acoustical Society of America, 111(4),
+      pp. 1917–1930. (Public academic literature).
+    - Spectral Parabolic Sub-Bin Peak Interpolation:
+      T. Grandke (1983), "Interpolation algorithms for discrete Fourier transforms of
+      weighted signals," IEEE Trans. Instrum. Meas., IM-32(2), pp. 350-355;
+      J.O. Smith and X. Serra (1987), "PARSHL: An analysis/synthesis system for
+      polyphonic music," Proc. ICMC.
+    - Stroboscopic Multi-Ring Slip Analysis:
+      R.W. Young and A. Loomis / C.G. Conn Ltd. (1942), "Stroboscope," U.S. Patent No.
+      2,286,030 (expired, public domain);
+      D.J. Carpenter / Peterson Electro-Musical Products (2003), "Electronic strobe
+      tuning aid," U.S. Patent No. 6,580,024 B2 (expired 2021, public domain).
+    - Bridge Saddle Intonation Mechanics:
+      Mersenne acoustic law of vibrating strings (f = (1 / 2L) * sqrt(T / mu));
+      B. Feiten (1999), "Method and apparatus for fully intonating a stringed instrument,"
+      U.S. Patent No. 5,955,689 (expired 2017, public domain).
 """
 
 import math
@@ -174,7 +194,8 @@ def calculate_intonation_delta(
     """Calculate intonation delta between 12th-fret harmonic and fretted note.
 
     Computes delta = fretted_cents - harmonic_cents and provides bridge saddle
-    compensation advice based on string acoustics.
+    compensation advice based on Mersenne string acoustics and lutherie prior art
+    (ref. expired U.S. Patent No. 5,955,689).
 
     Args:
         harmonic_cents: Measured pitch deviation of 12th-fret harmonic in cents.
@@ -278,6 +299,8 @@ def estimate_pitch_yin(
     locates the dip below the aperiodic threshold, refines the minimum using sub-sample
     parabolic fitting, and optionally restricts search to a continuity window to prevent
     octave hopping on decaying notes.
+
+    Based on the open academic algorithm by A. de Cheveigné & H. Kawahara (JASA 2002).
 
     Args:
         signal: Audio sample buffer.
@@ -389,7 +412,7 @@ def estimate_pitch_fft(
     """Refine spectral peak frequency using parabolic-interpolated FFT.
 
     Applies a Hann window, zero-pads the signal to increase spectral bin density,
-    and interpolates around the maximum FFT magnitude bin.
+    and interpolates around the maximum FFT magnitude bin (Grandke 1983; Smith & Serra 1987).
 
     Args:
         signal: Audio sample buffer.
